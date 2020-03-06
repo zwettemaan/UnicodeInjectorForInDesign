@@ -140,25 +140,48 @@ months.
 
 */
 
+const kUnconfiguredScriptName = "UnicodeInjector.jsx";
+const kSampleScriptName       = "U+20AC Euro Sign";
+
 // This is the 'faked' script name used when you run the script from the
 // ExtendScript Toolkit
-const kDebugSampleScriptName = "U+0061 U+0062 Insert Unicode chars.jsx";
+const kDebugSampleScriptName  = "U+0061 U+0062 Insert Unicode chars.jsx";
 
-const kUnicodeRegEx = /^(.*?u\+([0-9a-f]{1,4}))(.*)$/i;
-const kHexaRegEx = /^(.*?0x([0-9a-f]{1,4}))(.*)$/i;
-const kDeciRegEx = /^(.*?0d([1-9][0-9]*))(.*)$/i;
+const kUnicodeRegEx           = /^(.*?u\+([0-9a-f]{1,4}))(.*)$/i;
+const kHexaRegEx              = /^(.*?0x([0-9a-f]{1,4}))(.*)$/i;
+const kDeciRegEx              = /^(.*?0d([1-9][0-9]*))(.*)$/i;
 
-const kErr_NoError = 0;
-const kErr_NoSelection = 1;
-const kErr_MissingCodes = 2;
+const kErr_NoError            = 0;
+const kErr_NoSelection        = 1;
+const kErr_MissingCodes       = 2;
 
 var error = kErr_NoError;
 
 do
-{
-    
-    if (app.selection == null)
+{    
+    var fileName; 
+    try
     {
+        if (app.activeScript instanceof File)
+        {
+            fileName = app.activeScript.name;
+        }
+        else 
+        {
+            fileName = kDebugSampleScriptName;
+        }
+    }
+    catch (err)
+    {
+        fileName = kDebugSampleScriptName;
+    }
+
+    if (fileName == kUnconfiguredScriptName) {
+        error = kErr_MissingCodes;
+        break;
+    }    
+
+    if (app.documents.length == 0) {
         error = kErr_NoSelection;
         break;
     }
@@ -181,24 +204,6 @@ do
         break;
     }
 
-    var fileName; 
-    var err;
-    try
-    {
-        if (app.activeScript instanceof File)
-        {
-            fileName = app.activeScript.name;
-        }
-        else 
-        {
-            fileName = kDebugSampleScriptName;
-        }
-    }
-    catch (err)
-    {
-        fileName = kDebugSampleScriptName;
-    }
-    
     var fileNameWasPrefixedWithCode;
     var charCode;
     var numberBase;
@@ -259,10 +264,38 @@ while (false);
 
 switch (error)
 {
+
 case kErr_NoSelection:
-    alert("Please make sure you put your text cursor in a text frame, but don't select any text");
+
+    alert("Please put the blinking text cursor somewhere in a text frame, but avoid selecting any text.");
     break;
+
 case kErr_MissingCodes:
-    alert("To configure this script, it needs to be renamed. Please open this script with a text editor and read the instructions inside");
+
+    var newName = 
+        prompt(
+            "This script needs to be copied and renamed in order to function.\n" + 
+            "To view instructions on how to decide on a name for the copied script, " + 
+            "right-click this script on the Scripts panel and choose 'Edit Script'.\n\n" + 
+            "Enter the name for the copied script (you can tweak the example shown below):", 
+            kSampleScriptName, 
+            "Customizing Script");
+
+    if (newName) {
+
+        if (newName.substr(-4).toLowerCase() != ".jsx") {
+            newName += ".jsx";
+        }
+
+        var destination = File(app.scriptPreferences.scriptsFolder + "/" + newName);
+        if (destination.exists) {
+            alert("A script by that name already exists. No copy was made.");
+        }
+        else {
+            app.activeScript.copy(destination);
+            alert("The Scripts panel will now update.");
+            File(app.filePath).execute();
+        }
+    }
     break;
 }
