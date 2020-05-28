@@ -27,6 +27,10 @@ SOFTWARE.
 About
 -----
 
+Also see:
+
+  https://github.com/zwettemaan/UnicodeInjectorForInDesign
+
 This script will insert a sequence of one or more Unicode
 characters at the current insertion point in InDesign.
 
