@@ -4,7 +4,9 @@
 MIT License
 -----------
 
-Copyright (c) 2020 Kris Coppieters
+Copyright (c) 2020-2026 Kris Coppieters
+
+Version 1.0.1: 2026-07-01: add support for Unicode above U+FFFF (e.g. U+1F600 = smiley face)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -99,11 +101,11 @@ ignored - only the U+0061 and U+0062 is interpreted.
 
 The script understands the following notations:
 
-U+nnnn (U, +, then 1 to 4 hexadecimal digits)
+U+nnnn (U, +, then 1 to 6 hexadecimal digits)
   Examples: U+0041, u+20eF, u+61
-0xnnnn (0, x, then 1 to 4 hexadecimal digits)
+0xnnnn (0, x, then 1 to 6 hexadecimal digits)
   Examples: 0x0041, 0x20Ef, 0X61
-0dnnnnn (0, d, followed by 1 to 5 decimal digits)
+0dnnnnn (0, d, followed by 1 to 7 decimal digits)
   Examples: 0d65, 0d8431, 0D97 
 
 So the script whose filename is:
@@ -174,8 +176,8 @@ const kSampleScriptName       = "U+20AC Euro Sign";
 // ExtendScript Toolkit
 const kDebugSampleScriptName  = "U+0061 U+0062 Insert Unicode chars.jsx";
 
-const kUnicodeRegEx           = /^(.*?u\+([0-9a-f]{1,4}))(.*)$/i;
-const kHexaRegEx              = /^(.*?0x([0-9a-f]{1,4}))(.*)$/i;
+const kUnicodeRegEx           = /^(.*?u\+([0-9a-f]{1,6}))(.*)$/i;
+const kHexaRegEx              = /^(.*?0x([0-9a-f]{1,6}))(.*)$/i;
 const kDeciRegEx              = /^(.*?0d([1-9][0-9]*))(.*)$/i;
 
 const kErr_NoError            = 0;
@@ -183,6 +185,29 @@ const kErr_NoSelection        = 1;
 const kErr_MissingCodes       = 2;
 
 var error = kErr_NoError;
+
+function unicodeToStr(codePoint) {
+
+    var retVal = "";
+
+    do {
+
+        if (typeof codePoint !== "number" || codePoint < 0 || codePoint > 0x10FFFF) {
+            break;
+        }
+
+        if (codePoint > 0xFFFF) {
+            var cp = codePoint - 0x10000;
+            retVal = String.fromCharCode(0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF));
+        } else {
+            retVal = String.fromCharCode(codePoint);
+        }
+
+    } 
+    while (false);
+
+    return retVal;
+}
 
 do
 {    
@@ -275,7 +300,7 @@ do
                 if (! isNaN(numericalCharCode) && numericalCharCode != 0)
                 {
                     error = kErr_NoError;
-                    app.selection[0].contents = String.fromCharCode(numericalCharCode);
+                    app.selection[0].contents = unicodeToStr(numericalCharCode);
 
                     fileNameWasPrefixedWithCode = true;
                     // Strip off the code we just processed, and then loop back to try 
