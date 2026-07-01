@@ -338,6 +338,7 @@ do
                 }
                 else {
                     state = STATE_IDLE;
+                    pos--;
                 }
                 break;
             case STATE_U:
@@ -366,6 +367,7 @@ do
                 }
                 else {
                     state = STATE_IDLE;
+                    pos--;
                 }
                 break;
             case STATE_0x:
@@ -384,6 +386,7 @@ do
                 }
                 else {
                     state = STATE_IDLE;
+                    pos--;
                 }
                 
                 if (state == STATE_U_PLUS || state == STATE_0x) {
@@ -408,6 +411,7 @@ do
                 }
                 else {
                     state = STATE_IDLE;
+                    pos--;
                 }
                 
                 if (state == STATE_0d) {
@@ -469,6 +473,7 @@ do
                 }
                 else {
                     chunk += c;
+                    state = STATE_SINGLE_QUOTED;
                 }
                 break;
             case STATE_DOUBLE_QUOTED: 
@@ -505,8 +510,8 @@ do
                     chunk += '\r';
                     state = STATE_DOUBLE_QUOTED;
                 }
-                else if (c == '\'') {
-                    chunk += '\'';
+                else if (c == '"') {
+                    chunk += '"';
                     state = STATE_DOUBLE_QUOTED;
                 }
                 else if (c === undefined) {
@@ -517,6 +522,7 @@ do
                 }
                 else {
                     chunk += c;
+                    state = STATE_DOUBLE_QUOTED;
                 }
                 break;
         }
