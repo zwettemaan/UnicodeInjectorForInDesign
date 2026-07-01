@@ -4,9 +4,11 @@
 MIT License
 -----------
 
-Copyright (c) 2020-2026 Kris Coppieters
+Copyright (c) 2011-2026 Kris Coppieters
 
-Version 1.0.1: 2026-07-01: add support for Unicode above U+FFFF (e.g. U+1F600 = smiley face)
+Version 1.0.1: 2026-07-01: 
+add support for Unicode above U+FFFF (e.g. U+1F600 = smiley face)
+add support for single/double-quoted literal strings with escape sequences (%n, %t, %r, %%, %', %")
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -106,7 +108,20 @@ U+nnnn (U, +, then 1 to 6 hexadecimal digits)
 0xnnnn (0, x, then 1 to 6 hexadecimal digits)
   Examples: 0x0041, 0x20Ef, 0X61
 0dnnnnn (0, d, followed by 1 to 7 decimal digits)
-  Examples: 0d65, 0d8431, 0D97 
+  Examples: 0d65, 0d8431, 0D97
+"..." or '...' (single or double quoted literal text)
+  Examples: "abc", 'abc', "line1%nline2"
+  Escapes use '%' rather than backslash, since backslash is a path
+  separator and is not safe to use in filenames. Escape sequences
+  recognized inside quotes: %n (newline), %r (carriage return), %t (tab),
+  %% (literal percent sign), %' (single quote), %" (double quote). Any
+  other %-escaped character is inserted literally, without the '%'.
+
+So a script named:
+
+  "this%n%n" Insert text.jsx
+
+will insert the text "this" followed by two newlines.
 
 So the script whose filename is:
 
@@ -146,9 +161,9 @@ Version info
 
 UnicodeInjector.jsx
 
-Version 0.0.2
+Version 1.0.1
 
-(C) 2011-2020 Rorohiko Ltd.
+(C) 2011-2026 Rorohiko Ltd.
 All rights reserved.
 By Kris Coppieters
 kris@rorohiko.com
@@ -174,17 +189,30 @@ const kSampleScriptName       = "U+20AC Euro Sign";
 
 // This is the 'faked' script name used when you run the script from the
 // ExtendScript Toolkit
-const kDebugSampleScriptName  = "U+0061 U+0062 Insert Unicode chars.jsx";
-
-const kUnicodeRegEx           = /^(.*?u\+([0-9a-f]{1,6}))(.*)$/i;
-const kHexaRegEx              = /^(.*?0x([0-9a-f]{1,6}))(.*)$/i;
-const kDeciRegEx              = /^(.*?0d([1-9][0-9]*))(.*)$/i;
+const kDebugSampleScriptName  = "Bla \"smile%n\" U+1F600 \"%nthough\"";
 
 const kErr_NoError            = 0;
 const kErr_NoSelection        = 1;
 const kErr_MissingCodes       = 2;
 
 var error = kErr_NoError;
+
+var STATE_IDLE                  = 0;
+var STATE_SINGLE_QUOTED         = 1;
+var STATE_DOUBLE_QUOTED         = 2;
+var STATE_SINGLE_QUOTED_ESCAPED = 3;
+var STATE_DOUBLE_QUOTED_ESCAPED = 4;
+var STATE_U                     = 5;
+var STATE_U_PLUS                = 6;
+var STATE_0                     = 7;
+var STATE_0x                    = 8;
+var STATE_0d                    = 9;
+var STATE_DONE                  = 10;
+
+var CHAR_ESCAPE                 = "%";
+var CHAR_CODE_A                 = "A".charCodeAt(0);
+var CHAR_CODE_a                 = "a".charCodeAt(0);
+var CHAR_CODE_0                 = "0".charCodeAt(0);
 
 function unicodeToStr(codePoint) {
 
@@ -210,13 +238,13 @@ function unicodeToStr(codePoint) {
 }
 
 do
-{    
+{
     var fileName; 
     try
     {
         if (app.activeScript instanceof File)
         {
-            fileName = app.activeScript.name;
+            fileName = decodeURIComponent(app.activeScript.name);
         }
         else 
         {
@@ -256,61 +284,260 @@ do
         break;
     }
 
-    var fileNameWasPrefixedWithCode;
-    var charCode;
-    var numberBase;
-    var numericalCharCode;
-    var matchingRegEx;
-    
-    error = kErr_MissingCodes;
 
-    // Start a loop that strips code prefixes from the filename 
-    // one by one, until all codes have been processed
-    do
-    {
-        fileNameWasPrefixedWithCode = false;
-    
-        if (fileName.match(kUnicodeRegEx) != null)
-        {
-            matchingRegEx = kUnicodeRegEx;
-            numberBase = 16;
+    error = kErr_NoError;
+
+    var pos = 0;
+    var c;
+    var chunks = [];
+    var chunk = "";
+    var numChunk = 0;
+    var digitCount = 0;
+    var state = STATE_IDLE;
+    while (state != STATE_DONE) {
+
+        if (pos < fileName.length) {
+            c = fileName.charAt(pos);
+            pos++;
         }
-        else if (fileName.match(kHexaRegEx) != null)
-        {
-            matchingRegEx = kHexaRegEx;
-            numberBase = 16;
-        }
-        else if (fileName.match(kDeciRegEx) != null)
-        {
-            matchingRegEx = kDeciRegEx;
-            numberBase = 10;
-        }
-        else
-        {
-            matchingRegEx = null;
+        else {
+            c = undefined;
         }
 
-        if (matchingRegEx != null)
-        {
-            charCode = fileName.replace(matchingRegEx,"$2");
-
-            if (charCode != "")
-            {
-                numericalCharCode = parseInt(charCode, numberBase);
-                if (! isNaN(numericalCharCode) && numericalCharCode != 0)
-                {
-                    error = kErr_NoError;
-                    app.selection[0].contents = unicodeToStr(numericalCharCode);
-
-                    fileNameWasPrefixedWithCode = true;
-                    // Strip off the code we just processed, and then loop back to try 
-                    // to get the next code, if any
-                    fileName = fileName.replace(matchingRegEx,"$3");
+        switch (state) {
+            case STATE_IDLE:
+                if (c == '\'') {
+                    state = STATE_SINGLE_QUOTED;
                 }
-            }
+                else if (c == '"') {
+                    state = STATE_DOUBLE_QUOTED;
+                }
+                else if (c == 'U' || c == 'u') {
+                    state = STATE_U;
+                }
+                else if (c == '0') {
+                    state = STATE_0;
+                }
+                else if (c === undefined) {
+                    state = STATE_DONE;
+                }
+                break;
+            case STATE_0:
+                if (c == 'x') {
+                    numChunk = 0;
+                    digitCount = 0;
+                    state = STATE_0x;
+                }
+                else if (c == 'd') {
+                    numChunk = 0;
+                    digitCount = 0;
+                    state = STATE_0d;
+                }
+                else if (c === undefined) {
+                    state = STATE_DONE;
+                }
+                else {
+                    state = STATE_IDLE;
+                }
+                break;
+            case STATE_U:
+                if (c == '+') {
+                    numChunk = 0;
+                    digitCount = 0;
+                    state = STATE_U_PLUS;
+                }
+                else if (c >= "a" && c <= "f") {
+                    numChunk = c.charCodeAt(0) - CHAR_CODE_a + 10;     
+                    digitCount = 1;
+                    state = STATE_U_PLUS;           
+                }
+                else if (c >= "A" && c <= "F") {
+                    numChunk = c.charCodeAt(0) - CHAR_CODE_A + 10;
+                    digitCount = 1;
+                    state = STATE_U_PLUS;           
+                }
+                else if (c >= "0" && c <= "9") {
+                    numChunk = c.charCodeAt(0) - CHAR_CODE_0;
+                    digitCount = 1;
+                    state = STATE_U_PLUS;           
+                }
+                else if (c === undefined) {
+                    state = STATE_DONE;
+                }
+                else {
+                    state = STATE_IDLE;
+                }
+                break;
+            case STATE_0x:
+            case STATE_U_PLUS:
+                if (c >= "a" && c <= "f") {
+                    numChunk = numChunk * 16 + c.charCodeAt(0) - CHAR_CODE_a + 10;
+                }
+                else if (c >= "A" && c <= "F") {
+                    numChunk = numChunk * 16 + c.charCodeAt(0) - CHAR_CODE_A + 10;
+                }
+                else if (c >= "0" && c <= "9") {
+                    numChunk = numChunk * 16 + c.charCodeAt(0) - CHAR_CODE_0;
+                }
+                else if (c === undefined) {
+                    state = STATE_DONE;
+                }
+                else {
+                    state = STATE_IDLE;
+                }
+                
+                if (state == STATE_U_PLUS || state == STATE_0x) {
+                    digitCount++;
+                    if (digitCount >= 6) {
+                        chunks.push(numChunk);
+                        state = STATE_IDLE;
+                    }
+                }
+                else {
+                    if (digitCount > 0) {
+                        chunks.push(numChunk);
+                    }
+                }
+                break;
+            case STATE_0d:
+                if (c >= "0" && c <= "9") {
+                    numChunk = numChunk * 10 + c.charCodeAt(0) - CHAR_CODE_0;
+                }
+                else if (c === undefined) {
+                    state = STATE_DONE;
+                }
+                else {
+                    state = STATE_IDLE;
+                }
+                
+                if (state == STATE_0d) {
+                    digitCount++;
+                    if (digitCount >= 7) {
+                        chunks.push(numChunk);
+                        state = STATE_IDLE;
+                    }
+                }
+                else {
+                    if (digitCount > 0) {
+                        chunks.push(numChunk);
+                    }
+                }
+                break;
+            case STATE_SINGLE_QUOTED: 
+                if (c == CHAR_ESCAPE) {
+                    state = STATE_SINGLE_QUOTED_ESCAPED;
+                }
+                else if (c == '\'') {
+                    if (chunk) {
+                        chunks.push(chunk);
+                    }
+                    chunk = "";
+                    state = STATE_IDLE;
+                }
+                else if (c === undefined) {
+                    if (chunk) {
+                        chunks.push(chunk);
+                    }
+                    state = STATE_DONE;
+                }
+                else {
+                    chunk += c;
+                }
+                break;
+            case STATE_SINGLE_QUOTED_ESCAPED:
+                if (c == 'n') {
+                    chunk += '\n';
+                    state = STATE_SINGLE_QUOTED;
+                }
+                else if (c == 't') {
+                    chunk += '\t';
+                    state = STATE_SINGLE_QUOTED;
+                }
+                else if (c == 'r') {
+                    chunk += '\r';
+                    state = STATE_SINGLE_QUOTED;
+                }
+                else if (c == '\'') {
+                    chunk += '\'';
+                    state = STATE_SINGLE_QUOTED;
+                }
+                else if (c === undefined) {
+                    if (chunk) {
+                        chunks.push(chunk);
+                    }
+                    state = STATE_DONE;
+                }
+                else {
+                    chunk += c;
+                }
+                break;
+            case STATE_DOUBLE_QUOTED: 
+                if (c == CHAR_ESCAPE) {
+                    state = STATE_DOUBLE_QUOTED_ESCAPED;
+                }
+                else if (c == '"') {
+                    if (chunk) {
+                        chunks.push(chunk);
+                    }
+                    chunk = "";
+                    state = STATE_IDLE;
+                }
+                else if (c === undefined) {
+                    if (chunk) {
+                        chunks.push(chunk);
+                    }
+                    state = STATE_DONE;
+                }
+                else {
+                    chunk += c;
+                }
+                break;
+            case STATE_DOUBLE_QUOTED_ESCAPED:
+                if (c == 'n') {
+                    chunk += '\n';
+                    state = STATE_DOUBLE_QUOTED;
+                }
+                else if (c == 't') {
+                    chunk += '\t';
+                    state = STATE_DOUBLE_QUOTED;
+                }
+                else if (c == 'r') {
+                    chunk += '\r';
+                    state = STATE_DOUBLE_QUOTED;
+                }
+                else if (c == '\'') {
+                    chunk += '\'';
+                    state = STATE_DOUBLE_QUOTED;
+                }
+                else if (c === undefined) {
+                    if (chunk) {
+                        chunks.push(chunk);
+                    }
+                    state = STATE_DONE;
+                }
+                else {
+                    chunk += c;
+                }
+                break;
         }
     }
-    while (fileNameWasPrefixedWithCode);
+
+    if (chunks.length == 0) {
+        error = kErr_MissingCodes;
+        break;
+    }
+
+    for (var chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+        chunk = chunks[chunkIdx];
+        if ("string" == typeof chunk) {
+            app.selection[0].contents = chunk;
+        }
+        else {
+            app.selection[0].contents = unicodeToStr(chunk);
+        }
+    }
+
+    
 }
 while (false);
 
