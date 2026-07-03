@@ -6,7 +6,13 @@ MIT License
 
 Copyright (c) 2011-2026 Kris Coppieters
 
-Version 1.0.1: 2026-07-01: 
+Version 1.0.2: 2026-07-03:
+accept uppercase 0X/0D prefixes (previously only lowercase 0x/0d worked)
+reject invalid code points and lone UTF-16 surrogates (U+D800-U+DFFF) instead of silently inserting nothing
+insert the whole result as a single string, wrapped in one undo step
+sanitize path separators out of the name entered when configuring a copy
+
+Version 1.0.1: 2026-07-01:
 add support for Unicode above U+FFFF (e.g. U+1F600 = smiley face)
 add support for single/double-quoted literal strings with escape sequences (%n, %t, %r, %%, %', %")
 
@@ -50,9 +56,9 @@ For example, if you rename a copy of this script to:
   U+0061 U+0062 Insert Unicode chars.jsx
 
 and then copy it into your InDesign Scripts folder, each time
-you set your text cursor in some text, then double-click the script 
+you set your text cursor in some text, then double-click the script
 (or hit a keyboard shortcut if you assign one), it will insert the
-Unicode characters U+0061 and U+0062 (that is, 'A' and 'B' - it's a 
+Unicode characters U+0061 and U+0062 (that is, 'a' and 'b' - it's a
 silly example).
 
 Installing
@@ -161,7 +167,7 @@ Version info
 
 UnicodeInjector.jsx
 
-Version 1.0.1
+Version 1.0.2
 
 (C) 2011-2026 Rorohiko Ltd.
 All rights reserved.
@@ -194,6 +200,7 @@ const kDebugSampleScriptName  = "Bla \"smile%n\" U+1F600 \"%nthough\"";
 const kErr_NoError            = 0;
 const kErr_NoSelection        = 1;
 const kErr_MissingCodes       = 2;
+const kErr_InvalidCodePoint   = 3;
 
 var error = kErr_NoError;
 
@@ -214,13 +221,20 @@ var CHAR_CODE_A                 = "A".charCodeAt(0);
 var CHAR_CODE_a                 = "a".charCodeAt(0);
 var CHAR_CODE_0                 = "0".charCodeAt(0);
 
+var ACTIVE_SCRIPT = app.activeScript;
+
 function unicodeToStr(codePoint) {
 
-    var retVal = "";
+    var retVal = null;
 
     do {
 
         if (typeof codePoint !== "number" || codePoint < 0 || codePoint > 0x10FFFF) {
+            break;
+        }
+
+        if (codePoint >= 0xD800 && codePoint <= 0xDFFF) {
+            // lone UTF-16 surrogate code units are not valid Unicode scalar values
             break;
         }
 
@@ -231,28 +245,32 @@ function unicodeToStr(codePoint) {
             retVal = String.fromCharCode(codePoint);
         }
 
-    } 
+    }
     while (false);
 
     return retVal;
 }
 
-do
+
+function main()
 {
-    var fileName; 
+    var fileName;
+    do
+    {
     try
     {
-        if (app.activeScript instanceof File)
+        if (ACTIVE_SCRIPT instanceof File)
         {
-            fileName = decodeURIComponent(app.activeScript.name);
+            fileName = decodeURIComponent(ACTIVE_SCRIPT.name);
         }
-        else 
+        else
         {
             fileName = kDebugSampleScriptName;
         }
     }
     catch (err)
     {
+        alert(err);
         fileName = kDebugSampleScriptName;
     }
 
@@ -323,12 +341,12 @@ do
                 }
                 break;
             case STATE_0:
-                if (c == 'x') {
+                if (c == 'x' || c == 'X') {
                     numChunk = 0;
                     digitCount = 0;
                     state = STATE_0x;
                 }
-                else if (c == 'd') {
+                else if (c == 'd' || c == 'D') {
                     numChunk = 0;
                     digitCount = 0;
                     state = STATE_0d;
@@ -533,19 +551,38 @@ do
         break;
     }
 
+    var textToInsert = "";
+
     for (var chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
         chunk = chunks[chunkIdx];
         if ("string" == typeof chunk) {
-            app.selection[0].contents = chunk;
+            textToInsert += chunk;
         }
         else {
-            app.selection[0].contents = unicodeToStr(chunk);
+            var chunkStr = unicodeToStr(chunk);
+            if (chunkStr === null) {
+                error = kErr_InvalidCodePoint;
+                break;
+            }
+            textToInsert += chunkStr;
         }
     }
 
-    
+    if (error != kErr_NoError) {
+        break;
+    }
+
+    app.selection[0].contents = textToInsert;
+    }
+    while (false);
 }
-while (false);
+
+app.doScript(
+    main,
+    ScriptLanguage.JAVASCRIPT,
+    undefined,
+    UndoModes.ENTIRE_SCRIPT,
+    "Unicode Injector");
 
 switch (error)
 {
@@ -553,6 +590,11 @@ switch (error)
 case kErr_NoSelection:
 
     alert("Please put the blinking text cursor somewhere in a text frame, but avoid selecting any text.");
+    break;
+
+case kErr_InvalidCodePoint:
+
+    alert("The script's filename contains an invalid Unicode code point (out of range, or a lone UTF-16 surrogate). No text was inserted.");
     break;
 
 case kErr_MissingCodes:
@@ -568,6 +610,8 @@ case kErr_MissingCodes:
 
     if (newName) {
 
+        newName = newName.replace(/[\/\\:]/g, " ");
+
         if (newName.substr(-4).toLowerCase() != ".jsx") {
             newName += ".jsx";
         }
@@ -577,7 +621,7 @@ case kErr_MissingCodes:
             alert("A script by that name already exists. No copy was made.");
         }
         else {
-            app.activeScript.copy(destination);
+            ACTIVE_SCRIPT.copy(destination);
             alert("The Scripts panel will now update.");
             File(app.filePath).execute();
         }
