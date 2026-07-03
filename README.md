@@ -16,12 +16,14 @@ inserts the character(s) encoded in its filename.
 
 ## Installing
 
-1. Copy `dist/UnicodeInjector.jsx` into your InDesign 'Scripts Panel' folder (right-click the
+1. First click the `<> Code` button on the main Github page and select 'Download ZIP' from the dropdown menu.
+2. Decompress the zip file
+3. Copy `dist/UnicodeInjector.jsx` into your InDesign 'Scripts Panel' folder (right-click the
    'User' folder in the Scripts panel and choose 'Reveal in Explorer'/'Reveal in Finder').
-2. Double-click it once from the Scripts panel. You'll be prompted for a name — this makes a
+4. Double-click it once from the Scripts panel. You'll be prompted for a name — this makes a
    renamed copy that is now configured to insert whatever you encoded in the name.
-3. Optionally assign a keyboard shortcut to the new copy via Edit > Keyboard Shortcuts...
-4. Repeat for as many characters/strings as you want.
+5. Optionally assign a keyboard shortcut to the new copy via Edit > Keyboard Shortcuts...
+6. Repeat for as many characters/strings as you want.
 
 ## Examples
 
